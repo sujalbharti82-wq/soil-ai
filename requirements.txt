@@ -1,5 +1,5 @@
-streamlit
-tensorflow==2.12.0
-numpy
-pillow
-scikit-learn
+streamlit==1.32.0
+tensorflow-cpu==2.10.0
+numpy==1.23.5
+pillow==9.5.0
+scikit-learn==1.2.2
