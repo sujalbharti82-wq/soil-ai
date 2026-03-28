@@ -9,7 +9,8 @@ from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.preprocessing import image
 
-DATASET = os.path.join(os.getcwd(), "classes")
+# ---------------- CONFIG ----------------
+DATASET = "classes"
 IMG_SIZE = 224
 
 soil_info = {
@@ -21,14 +22,23 @@ soil_info = {
 
 st.set_page_config(page_title="Soil AI", layout="wide")
 
-# 🔥 MODEL LOAD (lightweight)
+# ---------------- CHECK DATASET ----------------
+if not os.path.exists(DATASET):
+    st.error("❌ 'classes' folder missing (GitHub me upload karo)")
+    st.stop()
+
+# ---------------- MODEL LOAD ----------------
 @st.cache_resource
 def load_model():
-    return MobileNetV2(weights="imagenet", include_top=False, pooling="avg")
+    try:
+        return MobileNetV2(weights="imagenet", include_top=False, pooling="avg")
+    except:
+        st.error("❌ Model load failed (internet/timeout issue)")
+        st.stop()
 
 model = load_model()
 
-# 🔥 FEATURE EXTRACT
+# ---------------- FEATURE EXTRACT ----------------
 def extract_feature(img):
     img = img.resize((IMG_SIZE, IMG_SIZE))
     arr = image.img_to_array(img)
@@ -37,47 +47,42 @@ def extract_feature(img):
     feat = model.predict(arr, verbose=0)[0]
     return feat / np.linalg.norm(feat)
 
-# 🔥 MULTI CROP
-def extract_multi_features(img):
-    w, h = img.size
-    crops = [
-        (0,0,w//2,h//2),
-        (w//2,0,w,h//2),
-        (0,h//2,w//2,h),
-        (w//2,h//2,w,h),
-        (w//4,h//4,3*w//4,3*h//4)
-    ]
-    return [extract_feature(img.crop(c)) for c in crops]
-
-# 🔥 DATASET LOAD (FAST VERSION)
+# ---------------- DATASET LOAD ----------------
 @st.cache_data
 def load_dataset():
     features, labels = [], []
-    for cls in os.listdir(DATASET):
-        p = os.path.join(DATASET, cls)
-        if not os.path.isdir(p): continue
 
-        files = os.listdir(p)[:8]  # 🔥 limit images (fast)
+    for cls in os.listdir(DATASET):
+        path = os.path.join(DATASET, cls)
+        if not os.path.isdir(path):
+            continue
+
+        files = os.listdir(path)[:5]   # 🔥 fast (limit images)
 
         for f in files:
             try:
-                img = Image.open(os.path.join(p,f)).convert("RGB")
-                feats = extract_multi_features(img)
-                for ft in feats:
-                    features.append(ft)
-                    labels.append(cls)
+                img_path = os.path.join(path, f)
+                img = Image.open(img_path).convert("RGB")
+
+                feat = extract_feature(img)
+                features.append(feat)
+                labels.append(cls)
+
             except:
-                pass
+                continue
+
     return np.array(features), np.array(labels)
 
-# 🔥 SAFE LOAD
+# ---------------- SAFE LOAD ----------------
 try:
     features, labels = load_dataset()
+    if len(features) == 0:
+        st.warning("⚠️ Dataset empty hai")
 except:
-    features, labels = np.array([]), np.array([])
+    st.error("❌ Dataset load error")
+    st.stop()
 
 # ---------------- UI ----------------
-
 st.markdown("""
 <h1 style='text-align:center;color:#2E8B57;'>🌱 Soil Detection AI</h1>
 <p style='text-align:center;color:gray;'>Smart Soil Analysis</p>
@@ -85,6 +90,7 @@ st.markdown("""
 
 left, right = st.columns([1.1,1])
 
+# ---------------- UPLOAD ----------------
 with left:
     st.subheader("📤 Upload Image")
     file = st.file_uploader("", type=["jpg","jpeg","png"])
@@ -93,6 +99,7 @@ with left:
         img = Image.open(file).convert("RGB")
         st.image(img, width=350)
 
+# ---------------- RESULT ----------------
 with right:
     st.subheader("📊 Result")
 
@@ -100,17 +107,15 @@ with right:
         if len(features) == 0:
             st.error("Dataset missing ❌")
         else:
-            query = extract_multi_features(img)
+            query = extract_feature(img)
 
-            votes = []
-            for q in query:
-                sims = cosine_similarity([q], features)[0]
-                votes.append(labels[np.argmax(sims)])
+            sims = cosine_similarity([query], features)[0]
+            idx = np.argmax(sims)
 
-            vals, cnt = np.unique(votes, return_counts=True)
-            final = vals[np.argmax(cnt)]
-            conf = (np.max(cnt)/len(votes))*100
-            info = soil_info[final]
+            final = labels[idx]
+            conf = sims[idx] * 100
+
+            info = soil_info.get(final, {"crop": "N/A", "fertilizer": "N/A"})
 
             st.success(f"Soil: {final.upper()}")
             st.write(f"Confidence: {conf:.1f}%")
@@ -121,6 +126,6 @@ with right:
             st.progress(int(conf))
 
     else:
-        st.write("Upload image")
+        st.write("Upload image 👆")
 
 st.markdown("<hr><p style='text-align:center;'>Made by Suju</p>", unsafe_allow_html=True)
