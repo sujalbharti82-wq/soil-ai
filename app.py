@@ -9,7 +9,7 @@ from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.preprocessing import image
 
-DATASET = "clases"
+DATASET = os.path.join(os.getcwd(), "classes")
 IMG_SIZE = 224
 
 soil_info = {
